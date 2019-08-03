@@ -44,6 +44,16 @@ def show_random_example(X, colorbar=False):
         plt.colorbar()
     plt.show()
 
+def plot_j_epoch(past_J):
+    plt.figure()
+    plt.title('J/Epoch-Graph')
+
+    plt.plot(np.arange(pastJ.shape[0]), pastJ, c='darkslategray', linestyle='-')
+
+    plt.xlabel('Epoch')
+    plt.ylabel('Cost (J)')
+    plt.legend(['J/Epoch-Graph'])
+
 # -------------------------------------------------------------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------------------- #
 

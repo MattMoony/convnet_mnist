@@ -20,7 +20,7 @@ This is supposed to be a little test project. I want to play around with convolu
 * [ ] Loss-Function (Cross Entropy)
 * [ ] Stochastic Mini Batch Gradient Descent
 * [ ] Advanced SGD (Momentum, RMSprop, Adam, etc.)
-* [ ] J/epoch-Graph
+* [x] J/epoch-Graph
 * [ ] Graphical representation of convolutional Layers
 * [x] Prediction-Function
 * [ ] Model evaluation (Accuracy)
