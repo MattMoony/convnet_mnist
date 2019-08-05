@@ -54,6 +54,18 @@ def plot_j_epoch(past_J):
     plt.ylabel('Cost (J)')
     plt.legend(['J/Epoch-Graph'])
 
+def show_conv_weights(Ws):
+    for i, W in enumerate(Ws):
+        plt.figure()
+        plt.suptitle('Conv-Layer #{:}'.format(i))
+
+        for y, f in enumerate(W):
+            for x, d in enumerate(f.T, 1):
+                plt.subplot(W.shape[0], W.shape[-1], y * W.shape[-1] + x)
+                plt.imshow(d.T, cmap='gray')
+
+    plt.show()
+
 # -------------------------------------------------------------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------------------- #
 
@@ -72,27 +84,68 @@ def normalize(mu, sigma, *args):
 # -------------------------------------------------------------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------------------- #
 
-def convolve(x, W):
-    fshape = tuple(np.subtract(x.shape[:-1], W.shape[1:-1]) + 1)
-    sm = np.lib.stride_tricks.as_strided(x, (*fshape, *W.shape[1:-1], x.shape[-1]), tuple(x.strides[:-1]) + tuple(x.strides))
+# def convolve_s(x, W):
+#     fshape = tuple(np.subtract(x.shape[:-1], W.shape[1:-1]) + 1)
+#     sm = np.lib.stride_tricks.as_strided(x, (*fshape, *W.shape[1:-1], x.shape[-1]), tuple(x.strides[:-1]) + tuple(x.strides))
     
-    res = np.sum(sm * W[0], (4,3,2))
+#     res = np.sum(sm * W[0], (4,3,2))
+#     for w in W[1:]:
+#         res = np.dstack((res, np.sum(sm * w, (4,3,2))))
+#     return res
+
+def convolve(x, W):
+    fshape = tuple(np.subtract(x.shape[1:-1], W.shape[1:-1]) + 1)
+    sm = np.lib.stride_tricks.as_strided(x, (x.shape[0], *fshape, *W.shape[1:-1], x.shape[-1]), tuple(x.strides[:-1]) + tuple(x.strides[1:]))
+    res = np.sum(sm * W[0], (5,4,3))
     for w in W[1:]:
-        res = np.dstack((res, np.sum(sm * w, (4,3,2))))
-    return res
+            res = np.dstack((res, np.sum(sm * w, (5,4,3))))
+    return res.reshape(x.shape[0], *fshape, W.shape[0])
 
 def ReLU(z):
     return np.maximum(0, z)
 
-def predict(x, W1, W2, W3, b1, b2, b3):
-    z1 = convolve(x, W1) + b1
-    a1 = ReLU(z1)
-    z2 = convolve(a1, W2) + b2
-    a2 = ReLU(z2).flatten()
-    z3 = a2.dot(W3) + b3
-    a3 = z3
+def softmax(Z, yi):
+    return np.exp(Z[np.arange(Z.shape[0]), yi]) / np.sum(np.exp(Z), 1)
 
-    return a3
+def softmax_a(Z):
+    return softmax(Z, np.arange(Z.shape[0]))
+
+def softmax_as(Z):
+    return softmax_a(Z[np.newaxis,:])
+
+def predict(x, conv_ws, fc_ws, bs):
+    zl = 0
+    al = x
+    wi = 0
+
+    for w, actf in conv_ws:
+        zl = convolve(al, w) + bs[wi]
+        al = actf(zl)
+
+        wi+=1
+
+    # al = al.flatten()
+    al = al.reshape((al.shape[0], np.prod(al.shape[1:])))
+
+    for w, actf in fc_ws:
+        zl = al.dot(w) + bs[wi]
+        al = actf(zl)
+
+        wi+=1
+
+    return al
+
+def predict_s(x, conv_ws, fc_ws, bs):
+    return predict(x[np.newaxis,:], conv_ws, fc_ws, bs)
+
+def loss(X, y, conv_ws, fc_ws, bs):
+    preds = predict(X, conv_ws, fc_ws, bs)
+
+    l = np.sum(-np.log(preds[np.arange(X.shape[0]), y]))
+    l /= X.shape[0]
+
+    l += (1/(2*X.shape[0])) * np.sum(np.asarray(conv_ws + fc_ws) ** 2)
+    return l
 
 # -------------------------------------------------------------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------------------- #
@@ -101,9 +154,9 @@ def main():
     # ----------------------------------------------------------------------------------------- #
     
     x_train = read_dataset('train-images-idx3-ubyte.gz', 60000)[:,:,:,np.newaxis]
-    y_train = np.where(np.ones((x_train.shape[0], 10)) * np.arange(10) == read_labels('train-labels-idx1-ubyte.gz', 60000), 1, 0)
+    y_train = read_labels('train-labels-idx1-ubyte.gz', 60000)
     x_test = read_dataset('t10k-images-idx3-ubyte.gz', 10000)[:,:,:,np.newaxis]
-    y_test = np.where(np.ones((x_test.shape[0], 10)) * np.arange(10) == read_labels('t10k-labels-idx1-ubyte.gz', 10000), 1, 0)
+    y_test = read_labels('t10k-labels-idx1-ubyte.gz', 10000)
 
     x_train, y_train = shuffle(x_train, y_train)
     x_test, y_test = shuffle(x_test, y_test)
@@ -135,23 +188,32 @@ def main():
     # - 1st fc-layer:                  #
     #   . #Weights: 18*18*3 = 972      #
     #   . #Outputs: 10                 #
+    #   . Activation: Softmax          #
     # -------------------------------- #
 
     W1 = np.random.rand(4,8,8,1)
     W2 = np.random.rand(2,4,4,4)
     W3 = np.random.rand(648,10)
 
-    b1 = np.random.rand(4)
-    b2 = np.random.rand(2)
-    b3 = np.random.rand(1)
+    b1 = np.zeros(4) + 1e-2
+    b2 = np.zeros(2) + 1e-2
+    b3 = np.zeros(1) + 1e-2
+
+    conv_ws = [(W1, ReLU), (W2, ReLU)]
+    fc_ws = [(W3, softmax_as)]
+    bs = [b1, b2, b3]
 
     # ----------------------------------------------------------------------------------------- #
 
-    print(predict(x_train[0], W1, W2, W3, b1, b2, b3))
-    print(np.argmax(predict(x_train[0], W1, W2, W3, b1, b2, b3)))
+    print(predict_s(x_train[0], conv_ws, fc_ws, bs))
+    print(np.argmax(predict_s(x_train[0], conv_ws, fc_ws, bs)))
     
     print(y_train[0])
-    print(np.argmax(y_train[0]))
+    print(loss(x_train, y_train, conv_ws, fc_ws, bs))
+
+    # ----------------------------------------------------------------------------------------- #
+
+    show_conv_weights([W1, W2])
 
     # ----------------------------------------------------------------------------------------- #
 
