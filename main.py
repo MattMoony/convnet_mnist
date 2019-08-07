@@ -98,36 +98,41 @@ def convolve(x, W):
     sm = np.lib.stride_tricks.as_strided(x, (x.shape[0], *fshape, *W.shape[1:-1], x.shape[-1]), tuple(x.strides[:-1]) + tuple(x.strides[1:]))
     res = np.sum(sm * W[0], (5,4,3))
     for w in W[1:]:
-            res = np.dstack((res, np.sum(sm * w, (5,4,3))))
+        res = np.dstack((res, np.sum(sm * w, (5,4,3))))
     return res.reshape(x.shape[0], *fshape, W.shape[0])
 
 def ReLU(z):
     return np.maximum(0, z)
 
-def softmax(Z, yi):
-    return np.exp(Z[np.arange(Z.shape[0]), yi]) / np.sum(np.exp(Z), 1)
+def ReLU_grad(z):
+    grad = np.maximum(0, z)
+    grad[grad != 0] = 1
+    return grad
 
-def softmax_a(Z):
-    return softmax(Z, np.arange(Z.shape[0]))
+def softmax(Z):
+    Z = Z.copy()
+    Z -= np.max(Z, 1, keepdims=True)
+    return np.exp(Z) / np.sum(np.exp(Z), 1)[:,np.newaxis]
 
-def softmax_as(Z):
-    return softmax_a(Z[np.newaxis,:])
+def softmax_grad(Z, y):
+    grad = softmax(Z)
+    grad[np.arange(grad.shape[0]), y] -= 1
+    return grad
 
 def predict(x, conv_ws, fc_ws, bs):
     zl = 0
     al = x
     wi = 0
 
-    for w, actf in conv_ws:
+    for w, actf, actf_g in conv_ws:
         zl = convolve(al, w) + bs[wi]
         al = actf(zl)
 
         wi+=1
 
-    # al = al.flatten()
     al = al.reshape((al.shape[0], np.prod(al.shape[1:])))
 
-    for w, actf in fc_ws:
+    for w, actf, actf_g in fc_ws:
         zl = al.dot(w) + bs[wi]
         al = actf(zl)
 
@@ -140,18 +145,56 @@ def predict_s(x, conv_ws, fc_ws, bs):
 
 def loss(X, y, conv_ws, fc_ws, bs):
     preds = predict(X, conv_ws, fc_ws, bs)
+    y = y.copy().squeeze()
 
     l = np.sum(-np.log(preds[np.arange(X.shape[0]), y]))
     l /= X.shape[0]
 
-    l += (1/(2*X.shape[0])) * np.sum(np.asarray(conv_ws + fc_ws) ** 2)
+    l += (1 / (2 * X.shape[0])) * np.sum(np.asarray([np.sum(np.asarray(x[0]) ** 2) for x in conv_ws + fc_ws]))
     return l
+
+def compute_gradient(X, y, conv_ws, fc_ws, bs):
+    # -- FORWARD PASS ------------------------------------------------------------------------- #
+
+    zl = 0
+    al = X
+    wi = 0
+
+    zl_s = []
+    al_s = [al]
+
+    for w, actf, actf_g in conv_ws:
+        zl = convolve(al, w) + bs[wi]
+        al = actf(zl)
+
+        zl_s.append(zl)
+        al_s.append(al)
+
+        wi+=1
+
+    al = al.reshape((al.shape[0], np.prod(al.shape[1:])))
+    al_s[-1] = al
+
+    for w, actf, actf_g in fc_ws:
+        zl = al.dot(w) + bs[wi]
+        al = actf(zl)
+
+        zl_s.append(zl)
+        al_s.append(al)
+
+        wi+=1
+
+    # -- BACKWARD PASS ------------------------------------------------------------------------ #
+
+    
+
+    # -- FIN ---------------------------------------------------------------------------------- #
 
 # -------------------------------------------------------------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------------------- #
 
 def main():
-    # ----------------------------------------------------------------------------------------- #
+    # -- DATASET SETUP ------------------------------------------------------------------------ #
     
     x_train = read_dataset('train-images-idx3-ubyte.gz', 60000)[:,:,:,np.newaxis]
     y_train = read_labels('train-labels-idx1-ubyte.gz', 60000)
@@ -164,14 +207,14 @@ def main():
     x_val, y_val = x_train[-x_test.shape[0]:], y_train[-y_test.shape[0]:]
     x_train, y_train = x_train[:-x_test.shape[0]], y_train[:-y_test.shape[0]]
 
-    # ----------------------------------------------------------------------------------------- #
+    # -- DATASET PREPARATION ------------------------------------------------------------------ #
 
     mu          = np.mean(x_train, 0)
     sigma       = np.max(x_train, 0) - np.min(x_train, 0) + 1e-8
 
     x_train, x_val, x_test = normalize(mu, sigma, x_train, x_val, x_test)
 
-    # ----------------------------------------------------------------------------------------- #
+    # -- MODEL SETUP -------------------------------------------------------------------------- #
 
     # -------------------------------- #
     # MODEL: 2 conv-layers, 1 fc-layer #
@@ -186,7 +229,7 @@ def main():
     #   . #Filters: 2                  #
     #   . Activation: ReLU             #
     # - 1st fc-layer:                  #
-    #   . #Weights: 18*18*3 = 972      #
+    #   . #Weights: 18*18*2 = 648      #
     #   . #Outputs: 10                 #
     #   . Activation: Softmax          #
     # -------------------------------- #
@@ -195,27 +238,28 @@ def main():
     W2 = np.random.rand(2,4,4,4)
     W3 = np.random.rand(648,10)
 
-    b1 = np.zeros(4) + 1e-2
-    b2 = np.zeros(2) + 1e-2
-    b3 = np.zeros(1) + 1e-2
+    b1 = np.zeros(4) + 1e-3
+    b2 = np.zeros(2) + 1e-3
+    b3 = np.zeros(1) + 1e-3
 
-    conv_ws = [(W1, ReLU), (W2, ReLU)]
-    fc_ws = [(W3, softmax_as)]
+    conv_ws = [(W1, ReLU, ReLU_grad), (W2, ReLU, ReLU_grad)]
+    fc_ws = [(W3, softmax, softmax_grad)]
     bs = [b1, b2, b3]
 
-    # ----------------------------------------------------------------------------------------- #
+    # -- MODEL TRAINING ----------------------------------------------------------------------- #
 
-    print(predict_s(x_train[0], conv_ws, fc_ws, bs))
-    print(np.argmax(predict_s(x_train[0], conv_ws, fc_ws, bs)))
     
-    print(y_train[0])
-    print(loss(x_train, y_train, conv_ws, fc_ws, bs))
+    
+    # -- MODEL EVALUATION --------------------------------------------------------------------- #
+    
+    print(loss(x_train[:10], y_train[:10], conv_ws, fc_ws, bs))
+    print(compute_gradient(x_train[:10], y_train[:10], conv_ws, fc_ws, bs))
 
-    # ----------------------------------------------------------------------------------------- #
+    # -- MODEL VISUALIZATION ------------------------------------------------------------------ #
 
-    show_conv_weights([W1, W2])
+    # show_conv_weights([W1, W2])
 
-    # ----------------------------------------------------------------------------------------- #
+    # -- FIN ---------------------------------------------------------------------------------- #
 
 if __name__ == '__main__':
     main()
