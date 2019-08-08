@@ -98,13 +98,13 @@ def convolve(x, W):
     sm = np.lib.stride_tricks.as_strided(x, (x.shape[0], *fshape, *W.shape[1:-1], x.shape[-1]), tuple(x.strides[:-1]) + tuple(x.strides[1:]))
     res = np.sum(sm * W[0], (5,4,3))
     for w in W[1:]:
-        res = np.dstack((res, np.sum(sm * w, (5,4,3))))
+        res = np.hstack((res, np.sum(sm * w, (5,4,3))))
     return res.reshape(x.shape[0], *fshape, W.shape[0])
 
 def ReLU(z):
     return np.maximum(0, z)
 
-def ReLU_grad(z):
+def ReLU_grad(z, *args, **kwargs):
     grad = np.maximum(0, z)
     grad[grad != 0] = 1
     return grad
@@ -114,7 +114,7 @@ def softmax(Z):
     Z -= np.max(Z, 1, keepdims=True)
     return np.exp(Z) / np.sum(np.exp(Z), 1)[:,np.newaxis]
 
-def softmax_grad(Z, y):
+def softmax_grad(Z, y, *args, **kwargs):
     grad = softmax(Z)
     grad[np.arange(grad.shape[0]), y] -= 1
     return grad
@@ -172,6 +172,8 @@ def compute_gradient(X, y, conv_ws, fc_ws, bs):
 
         wi+=1
 
+    last_conv_shape = al.shape
+
     al = al.reshape((al.shape[0], np.prod(al.shape[1:])))
     al_s[-1] = al
 
@@ -186,7 +188,38 @@ def compute_gradient(X, y, conv_ws, fc_ws, bs):
 
     # -- BACKWARD PASS ------------------------------------------------------------------------ #
 
-    
+    conv_grads = []
+    fc_grads = []
+    bs_grads = []
+
+    al_grad = np.ones((al_s[-1].shape))
+    wi -= 1
+
+    for w, actf, actf_g in reversed(fc_ws):
+        ac_grad = al_grad * actf_g(zl_s[wi], y.squeeze())
+
+        bs_grads.append(np.sum(ac_grad))
+        fc_grads.append(al_s[wi].T.dot(ac_grad))
+
+        al_grad = ac_grad.dot(w.T)
+
+        wi -= 1
+
+    al_grad = al_grad.reshape(last_conv_shape)
+
+    for w, actf, actf_g in reversed(conv_ws):
+        ac_grad = al_grad * actf_g(zl_s[wi], y.squeeze())
+
+        bs_grads.append(np.sum(ac_grad, axis=(0,1,2)))
+        conv_grads.append()
+
+    # -- RETURN VALUES ------------------------------------------------------------------------ #
+
+    conv_grads = list(reversed(conv_grads))
+    fc_grads = list(reversed(fc_grads))
+    bs_grads = list(reversed(bs_grads))
+
+    return conv_grads, fc_grads, bs_grads
 
     # -- FIN ---------------------------------------------------------------------------------- #
 
@@ -248,12 +281,15 @@ def main():
 
     # -- MODEL TRAINING ----------------------------------------------------------------------- #
 
-    
+    conv_ws_grad, fc_ws_grad, bs_grad = compute_gradient(x_train[:10], y_train[:10], conv_ws, fc_ws, bs)
+
+    print(conv_ws_grad)
+    print(fc_ws_grad)
+    print(bs_grad)
     
     # -- MODEL EVALUATION --------------------------------------------------------------------- #
     
     print(loss(x_train[:10], y_train[:10], conv_ws, fc_ws, bs))
-    print(compute_gradient(x_train[:10], y_train[:10], conv_ws, fc_ws, bs))
 
     # -- MODEL VISUALIZATION ------------------------------------------------------------------ #
 
