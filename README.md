@@ -27,6 +27,17 @@ This is supposed to be a little test project. I want to play around with convolu
 * [x] Model evaluation (Accuracy)
 * _... probably more to come ..._
 
+## Results
+
+Best accuracy so far: **93.10%**
+
+![J/Epoch-Graphs](media/JEpochGraph2.png)
+_J/Epoch-Graph over 1024 iterations ..._
+
+![Convolutions1](media/conv_ws_acts.png)
+![Convolutions2](media/conv_ws_acts2.png)
+_Convolutional weights & activations (examples: 8, 5)_
+
 ---
 
 ... MattMoony (August, 2019)

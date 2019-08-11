@@ -73,6 +73,7 @@ def show_conv_activations(x, conv_ws, fc_ws, bs):
     wi = 0
 
     plt.figure()
+    plt.suptitle('Convolutional weights & activations')
 
     maxfs = np.max([f[0].shape[0] for f in conv_ws])
 
@@ -81,9 +82,13 @@ def show_conv_activations(x, conv_ws, fc_ws, bs):
         al = actf(zl)
 
         for i in range(al.shape[-1]):
+            plt.subplot(len(conv_ws) * 2, maxfs, 2 * wi * maxfs + i + 1)
+            plt.title('c{:}:f{:}'.format(wi, i))
+            plt.imshow(np.mean(w[i], 2), cmap='gray')
+
             f = al[:,:,:,i].reshape(al.shape[1], al.shape[2])
-            plt.subplot(len(conv_ws), maxfs, wi * maxfs + i + 1)
-            plt.title('l{:}:f{:}'.format(wi, i))
+            plt.subplot(len(conv_ws) * 2, maxfs, (2 * wi + 1) * maxfs + i + 1)
+            plt.title('a{:}:f{:}'.format(wi, i))
             plt.imshow(f, cmap='gray')
 
         wi+=1
@@ -375,27 +380,27 @@ def main():
     # - 1st conv-layer:                #
     #   . Filter-Size: 8x8             #
     #   . Stride: 1                    #
-    #   . #Filters: 8                  #
+    #   . #Filters: 10                 #
     #   . Activation: ReLU             #
     # - 2nd conv-layer:                #
     #   . Filter-Size: 4x4             #
     #   . Stride: 1                    #
-    #   . #Filters: 4                  #
+    #   . #Filters: 6                  #
     #   . Activation: ReLU             #
     # - 1st fc-layer:                  #
-    #   . #Weights: 18*18*4 = 1296     #
+    #   . #Weights: 18*18*6 = 1944     #
     #   . #Outputs: 10                 #
     #   . Activation: Softmax          #
     # -------------------------------- #
 
-    W1 = np.ones((8,4,4,1))
-    W2 = np.ones((4,2,2,8))
-    W3 = np.ones((2304,10))
+    W1 = np.ones((10,8,8,1))
+    W2 = np.ones((6,4,4,10))
+    W3 = np.ones((1944,10))
 
     init_weights(W1, W2, W3)
 
-    b1 = np.zeros(8) + 1e-6
-    b2 = np.zeros(4) + 1e-6
+    b1 = np.zeros(10) + 1e-6
+    b2 = np.zeros(6) + 1e-6
     b3 = np.zeros(1) + 1e-6
 
     conv_ws = [[W1, ReLU, ReLU_grad], [W2, ReLU, ReLU_grad]]
@@ -404,9 +409,9 @@ def main():
 
     # -- MODEL TRAINING ----------------------------------------------------------------------- #
 
-    lamb            = 0.3
-    iters           = 512
-    alpha           = 1
+    lamb            = 0.03
+    iters           = 1024
+    alpha           = 0.3
     batch_size      = 32
 
     n_conv_ws, n_fc_ws, n_bs, past_Js = sgd(x_train, y_train, x_val, y_val, conv_ws, fc_ws, bs, 
@@ -415,7 +420,7 @@ def main():
     # -- MODEL EVALUATION --------------------------------------------------------------------- #
     
     acc = compute_accuracy(x_test[:round(x_test.shape[0]/2)], y_test[:round(y_test.shape[0]/2)], conv_ws, fc_ws, bs)
-    print('Final accuracy: %f' % acc)
+    print('Final accuracy: %.2f%%' % (acc * 100))
 
     # -- MODEL VISUALIZATION ------------------------------------------------------------------ #
 
@@ -439,7 +444,7 @@ def main():
         pass
 
     print('[+] Bye!')
-
+    
     # -- FIN ---------------------------------------------------------------------------------- #
 
 if __name__ == '__main__':
