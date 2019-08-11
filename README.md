@@ -17,8 +17,9 @@ This is supposed to be a little test project. I want to play around with convolu
 * [ ] Dropout
 * [ ] Batch Normalization
 * [x] Activation-Function (ReLU)
-* [ ] Loss-Function (Cross Entropy)
-* [ ] Stochastic Mini Batch Gradient Descent
+* [x] Loss-Function (Cross Entropy)
+* [x] Gradient-Computation Function
+* [x] Stochastic Mini Batch Gradient Descent
 * [ ] Advanced SGD (Momentum, RMSprop, Adam, etc.)
 * [x] J/epoch-Graph
 * [ ] Graphical representation of convolutional Layers
