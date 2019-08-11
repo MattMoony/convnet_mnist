@@ -48,11 +48,12 @@ def plot_j_epoch(past_J):
     plt.figure()
     plt.title('J/Epoch-Graph')
 
-    plt.plot(np.arange(len(past_J)), past_J, c='darkslategray', linestyle='-')
+    plt.plot(np.arange(len(past_J)), past_J[:,0], c='darkslategray', linestyle='-')
+    plt.plot(np.arange(len(past_J)), past_J[:,1], c='greenyellow', linestyle='--')
 
     plt.xlabel('Epoch')
     plt.ylabel('Cost (J)')
-    plt.legend(['J/Epoch-Graph'])
+    plt.legend(['J(train)', 'J(val)'])
 
 def show_conv_weights(Ws):
     for i, W in enumerate(Ws):
@@ -63,6 +64,37 @@ def show_conv_weights(Ws):
             for x, d in enumerate(f.T, 1):
                 plt.subplot(W.shape[0], W.shape[-1], y * W.shape[-1] + x)
                 plt.imshow(d.T, cmap='gray')
+
+    plt.show()
+
+def show_conv_activations(x, conv_ws, fc_ws, bs):
+    zl = 0
+    al = x
+    wi = 0
+
+    plt.figure()
+
+    maxfs = np.max([f[0].shape[0] for f in conv_ws])
+
+    for w, actf, actf_g in conv_ws:
+        zl = convolve(al, w) + bs[wi]
+        al = actf(zl)
+
+        for i in range(al.shape[-1]):
+            f = al[:,:,:,i].reshape(al.shape[1], al.shape[2])
+            plt.subplot(len(conv_ws), maxfs, wi * maxfs + i + 1)
+            plt.title('l{:}:f{:}'.format(wi, i))
+            plt.imshow(f, cmap='gray')
+
+        wi+=1
+
+    al = al.reshape((al.shape[0], np.prod(al.shape[1:])))
+
+    for w, actf, actf_g in fc_ws:
+        zl = al.dot(w) + bs[wi]
+        al = actf(zl)
+
+        wi+=1
 
     plt.show()
 
@@ -84,15 +116,6 @@ def normalize(mu, sigma, *args):
 # -------------------------------------------------------------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------------------------- #
 
-# def convolve_s(x, W):
-#     fshape = tuple(np.subtract(x.shape[:-1], W.shape[1:-1]) + 1)
-#     sm = np.lib.stride_tricks.as_strided(x, (*fshape, *W.shape[1:-1], x.shape[-1]), tuple(x.strides[:-1]) + tuple(x.strides))
-    
-#     res = np.sum(sm * W[0], (4,3,2))
-#     for w in W[1:]:
-#         res = np.dstack((res, np.sum(sm * w, (4,3,2))))
-#     return res
-
 def convolve(x, W):
     fshape = tuple(np.subtract(x.shape[1:-1], W.shape[1:-1]) + 1)
     sm = np.lib.stride_tricks.as_strided(x, (x.shape[0], *fshape, *W.shape[1:-1], x.shape[-1]), tuple(x.strides[:-1]) + tuple(x.strides[1:]))
@@ -104,11 +127,6 @@ def convolve(x, W):
 def deconvolve(a, g, W):
     fshape = tuple(np.subtract(a.shape[1:-1], W.shape[1:-1]) + 1)
     sm = np.lib.stride_tricks.as_strided(a, (a.shape[0], *fshape, *W.shape[1:-1], a.shape[-1]), tuple(a.strides[:-1]) + tuple(a.strides[1:]))
-    # print(a.shape)
-    # print(g.shape)
-    # print(W.shape)
-    # print(sm.shape)
-    # print('-'*24)
     res = np.sum(sm * np.repeat(g[:,:,:,0], np.prod(W.shape[1:]), axis=2).reshape(sm.shape), axis=(2,1,0))
     for i in range(1, g.shape[-1]):
         res = np.vstack((res, np.sum(sm * np.repeat(g[:,:,:,i], np.prod(W.shape[1:]), axis=2).reshape(sm.shape), axis=(2,1,0))))
@@ -141,6 +159,9 @@ def softmax_grad(Z, y, *args, **kwargs):
     grad = softmax(Z)
     grad[np.arange(grad.shape[0]), y] -= 1
     return grad
+
+# -------------------------------------------------------------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------------------------------------------------------------- #
 
 def predict(x, conv_ws, fc_ws, bs):
     zl = 0
@@ -175,6 +196,23 @@ def loss(X, y, conv_ws, fc_ws, bs, lamb=1e-3):
 
     l += (lamb / (2 * X.shape[0])) * np.sum(np.asarray([np.sum(np.asarray(x[0]) ** 2) for x in conv_ws + fc_ws]))
     return l
+
+def compute_accuracy(X, y, conv_ws, fc_ws, bs):
+    n_total = X.shape[0]
+
+    preds = predict(X, conv_ws, fc_ws, bs)
+    preds = np.argmax(preds, 1).reshape(y.shape)
+
+    n_corr = np.sum(np.where(preds == y, 1, 0))
+    return n_corr / n_total
+
+# -------------------------------------------------------------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------------------------------------------------------------- #
+
+def init_weights(*args):
+    for w in args:
+        n_avg = (np.prod(w.shape[1:]) + w.shape[0]) / 2
+        w *= np.random.rand(*w.shape) * (1 / n_avg)
 
 def compute_gradient(X, y, conv_ws, fc_ws, bs, lamb=1e-3):
     # -- FORWARD PASS ------------------------------------------------------------------------- #
@@ -250,37 +288,59 @@ def compute_gradient(X, y, conv_ws, fc_ws, bs, lamb=1e-3):
 
     # -- FIN ---------------------------------------------------------------------------------- #
 
-def sgd(X, y, conv_ws, fc_ws, bs, lamb=0.001, iters=10, alpha=1, batch_size=16):
+def sgd(X, y, Xval, yval, conv_ws, fc_ws, bs, lamb=0.001, iters=10, alpha=1, batch_size=16, beta=0.9):
+    v_conv_ws = []
+    v_fc_ws = []
+    v_bs = []
+
     conv_ws = conv_ws.copy()
     for i in range(len(conv_ws)):
         conv_ws[i][0] = conv_ws[i][0].copy()
+        v_conv_ws.append(np.zeros(conv_ws[i][0].shape))
     fc_ws = fc_ws.copy()
     for i in range(len(fc_ws)):
         fc_ws[i][0] = fc_ws[i][0].copy()
+        v_fc_ws.append(np.zeros(fc_ws[i][0].shape))
     bs = bs.copy()
     for i in range(len(bs)):
         bs[i] = bs[i].copy()
+        v_bs.append(np.zeros(bs[i].shape))
 
     a_inds = np.arange(X.shape[0])
     inds = np.random.choice(a_inds, batch_size)
 
-    past_Js = [loss(X[inds], y[inds], conv_ws, fc_ws, bs, lamb)]
+    av_inds = np.arange(Xval.shape[0])
+    inds_v = np.random.choice(av_inds, batch_size)
 
-    for i in range(iters):
-        inds = np.random.choice(a_inds, batch_size)
-        conv_g, fc_g, bs_g = compute_gradient(X[inds], y[inds], conv_ws, fc_ws, bs, lamb)
+    past_Js = np.array([
+        [loss(X[inds], y[inds], conv_ws, fc_ws, bs, lamb), loss(Xval[inds_v], yval[inds_v], conv_ws, fc_ws, bs, lamb)]
+    ])
 
-        for j in range(len(conv_ws)):
-            conv_ws[j][0] -= alpha * conv_g[j]
-        for j in range(len(fc_ws)):
-            fc_ws[j][0] -= alpha * fc_g[j]
-        for j in range(len(bs)):
-            bs[j] -= alpha * bs[j]
+    try:
+        for i in range(iters):
+            inds = np.random.choice(a_inds, batch_size)
+            conv_g, fc_g, bs_g = compute_gradient(X[inds], y[inds], conv_ws, fc_ws, bs, lamb)
 
-        inds = np.random.choice(a_inds, batch_size)
-        past_Js.append(loss(X[inds], y[inds], conv_ws, fc_ws, bs, lamb))
+            for j in range(len(conv_ws)):
+                v_conv_ws[j] = beta * v_conv_ws[j] + (1 - beta) * conv_g[j]
+                conv_ws[j][0] -= alpha * v_conv_ws[j]
+            for j in range(len(fc_ws)):
+                v_fc_ws[j] = beta * v_fc_ws[j] + (1 - beta) * fc_g[j]
+                fc_ws[j][0] -= alpha * v_fc_ws[j]
+            for j in range(len(bs)):
+                v_bs[j] = beta * v_bs[j] + (1 - beta) * bs_g[j]
+                bs[j] -= alpha * v_bs[j]
 
-        print('[iter#{:04d}] Loss: {:f} ... '.format(i, past_Js[-1]))
+            inds = np.random.choice(a_inds, batch_size)
+            inds_v = np.random.choice(av_inds, batch_size)
+
+            past_Js = np.vstack((past_Js, np.array([
+                [loss(X[inds], y[inds], conv_ws, fc_ws, bs, lamb), loss(Xval[inds_v], yval[inds_v], conv_ws, fc_ws, bs, lamb)]
+            ])))
+
+            print('[iter#{:04d}] Loss: {:f} | {:f} ... '.format(i, *past_Js[-1]))
+    except KeyboardInterrupt:
+        pass
 
     return [conv_ws, fc_ws, bs, past_Js]
 
@@ -315,26 +375,28 @@ def main():
     # - 1st conv-layer:                #
     #   . Filter-Size: 8x8             #
     #   . Stride: 1                    #
-    #   . #Filters: 4                  #
+    #   . #Filters: 8                  #
     #   . Activation: ReLU             #
     # - 2nd conv-layer:                #
     #   . Filter-Size: 4x4             #
     #   . Stride: 1                    #
-    #   . #Filters: 2                  #
+    #   . #Filters: 4                  #
     #   . Activation: ReLU             #
     # - 1st fc-layer:                  #
-    #   . #Weights: 18*18*2 = 648      #
+    #   . #Weights: 18*18*4 = 1296     #
     #   . #Outputs: 10                 #
     #   . Activation: Softmax          #
     # -------------------------------- #
 
-    W1 = np.random.rand(4,8,8,1)
-    W2 = np.random.rand(2,4,4,4)
-    W3 = np.random.rand(648,10)
+    W1 = np.ones((8,4,4,1))
+    W2 = np.ones((4,2,2,8))
+    W3 = np.ones((2304,10))
 
-    b1 = np.zeros(4) + 1e-3
-    b2 = np.zeros(2) + 1e-3
-    b3 = np.zeros(1) + 1e-3
+    init_weights(W1, W2, W3)
+
+    b1 = np.zeros(8) + 1e-6
+    b2 = np.zeros(4) + 1e-6
+    b3 = np.zeros(1) + 1e-6
 
     conv_ws = [[W1, ReLU, ReLU_grad], [W2, ReLU, ReLU_grad]]
     fc_ws = [[W3, softmax, softmax_grad]]
@@ -342,19 +404,41 @@ def main():
 
     # -- MODEL TRAINING ----------------------------------------------------------------------- #
 
-    n_conv_ws, n_fc_ws, n_bs, past_Js = sgd(x_train, y_train, conv_ws, fc_ws, bs, 
-        lamb=0.5, iters=1024, alpha=1, batch_size=32)
+    lamb            = 0.3
+    iters           = 512
+    alpha           = 1
+    batch_size      = 32
+
+    n_conv_ws, n_fc_ws, n_bs, past_Js = sgd(x_train, y_train, x_val, y_val, conv_ws, fc_ws, bs, 
+        lamb=lamb, iters=iters, alpha=alpha, batch_size=batch_size)
     
     # -- MODEL EVALUATION --------------------------------------------------------------------- #
     
-
+    acc = compute_accuracy(x_test[:round(x_test.shape[0]/2)], y_test[:round(y_test.shape[0]/2)], conv_ws, fc_ws, bs)
+    print('Final accuracy: %f' % acc)
 
     # -- MODEL VISUALIZATION ------------------------------------------------------------------ #
 
-    plt.ioff()
     plot_j_epoch(past_Js)
-
     plt.show()
+
+    # -- MODEL TESTING ------------------------------------------------------------------------ #
+
+    try:
+        while True:
+            rand_ind = np.random.choice(np.arange(x_test.shape[0]), 1)
+
+            pred = np.argmax(predict(x_train[rand_ind], n_conv_ws, n_fc_ws, n_bs), 1)[0]
+            labl = y_train[rand_ind]
+
+            print('Prediction: %d' % pred)
+            print('Label: %d' % labl)
+
+            show_conv_activations(x_train[rand_ind], n_conv_ws, n_fc_ws, n_bs)
+    except KeyboardInterrupt:
+        pass
+
+    print('[+] Bye!')
 
     # -- FIN ---------------------------------------------------------------------------------- #
 

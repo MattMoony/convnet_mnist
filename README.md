@@ -11,7 +11,7 @@ This is supposed to be a little test project. I want to play around with convolu
 
 * [x] Dataset preparation
 * [x] Simple weight initialization
-* [ ] Advanced weigth initialization (Xavier initialization, etc.)
+* [x] Advanced weigth initialization (Xavier initialization, etc.)
 * [x] Convolution-Function
 * [ ] Pooling Layers (Max-Pooling, Average-Pooling, etc.)
 * [ ] Dropout
@@ -20,11 +20,11 @@ This is supposed to be a little test project. I want to play around with convolu
 * [x] Loss-Function (Cross Entropy)
 * [x] Gradient-Computation Function
 * [x] Stochastic Mini Batch Gradient Descent
-* [ ] Advanced SGD (Momentum, RMSprop, Adam, etc.)
+* [x] Advanced SGD (Momentum, RMSprop, Adam, etc.)
 * [x] J/epoch-Graph
-* [ ] Graphical representation of convolutional Layers
+* [x] Graphical representation of convolutional Layers
 * [x] Prediction-Function
-* [ ] Model evaluation (Accuracy)
+* [x] Model evaluation (Accuracy)
 * _... probably more to come ..._
 
 ---
