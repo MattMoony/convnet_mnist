@@ -29,9 +29,9 @@ This is supposed to be a little test project. I want to play around with convolu
 
 ## Results
 
-Best accuracy so far: **93.10%**
+Best accuracy so far: **93.14%**
 
-![J/Epoch-Graphs](media/JEpochGraph2.png)
+![J/Epoch-Graphs](media/JEpochGraph3.png)
 _J/Epoch-Graph over 1024 iterations ..._
 
 ![Convolutions1](media/conv_ws_acts.png)

@@ -48,8 +48,8 @@ def plot_j_epoch(past_J):
     plt.figure()
     plt.title('J/Epoch-Graph')
 
-    plt.plot(np.arange(len(past_J)), past_J[:,0], c='darkslategray', linestyle='-')
-    plt.plot(np.arange(len(past_J)), past_J[:,1], c='greenyellow', linestyle='--')
+    plt.plot(np.arange(len(past_J)), past_J[:,0], c='darkslategray', linestyle='-', marker='o', markersize=3)
+    plt.plot(np.arange(len(past_J)), past_J[:,1], c='greenyellow', linestyle='--', marker='o', markersize=3)
 
     plt.xlabel('Epoch')
     plt.ylabel('Cost (J)')
