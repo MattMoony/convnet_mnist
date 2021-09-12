@@ -354,7 +354,7 @@ def sgd(X, y, Xval, yval, conv_ws, fc_ws, bs, lamb=0.001, iters=10, alpha=1, bat
 
 def main():
     # -- DATASET SETUP ------------------------------------------------------------------------ #
-    
+
     x_train = read_dataset('train-images-idx3-ubyte.gz', 60000)[:,:,:,np.newaxis]
     y_train = read_labels('train-labels-idx1-ubyte.gz', 60000)
     x_test = read_dataset('t10k-images-idx3-ubyte.gz', 10000)[:,:,:,np.newaxis]
@@ -414,11 +414,11 @@ def main():
     alpha           = 0.3
     batch_size      = 32
 
-    n_conv_ws, n_fc_ws, n_bs, past_Js = sgd(x_train, y_train, x_val, y_val, conv_ws, fc_ws, bs, 
+    n_conv_ws, n_fc_ws, n_bs, past_Js = sgd(x_train, y_train, x_val, y_val, conv_ws, fc_ws, bs,
         lamb=lamb, iters=iters, alpha=alpha, batch_size=batch_size)
-    
+
     # -- MODEL EVALUATION --------------------------------------------------------------------- #
-    
+
     acc = compute_accuracy(x_test[:round(x_test.shape[0]/2)], y_test[:round(y_test.shape[0]/2)], conv_ws, fc_ws, bs)
     print('Final accuracy: %.2f%%' % (acc * 100))
 
@@ -444,7 +444,7 @@ def main():
         pass
 
     print('[+] Bye!')
-    
+
     # -- FIN ---------------------------------------------------------------------------------- #
 
 if __name__ == '__main__':
